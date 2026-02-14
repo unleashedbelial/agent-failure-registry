@@ -47,11 +47,11 @@ prevention:
   - Distinguish between "cookies expired" and "page failed to load" in error handling
 
 lessons_learned:
-  - Persistent browser profiles are a liability — they accumulate corruption silently
-  - "Selector not found" can mean many things — don't assume it's always an auth issue
-  - Managed browser tools (OpenClaw browser) handle session hygiene automatically
-  - When debugging browser automation, always check the actual page URL and content first
-  - A screenshot or page.url() check before waiting for selectors saves hours of debugging
+  - "Persistent browser profiles are a liability — they accumulate corruption silently"
+  - "Selector not found can mean many things — do not assume it is always an auth issue"
+  - "Managed browser tools (OpenClaw browser) handle session hygiene automatically"
+  - "When debugging browser automation, always check the actual page URL and content first"
+  - "A screenshot or page.url() check before waiting for selectors saves hours of debugging"
 
 confidence: 5
 severity: "medium"
