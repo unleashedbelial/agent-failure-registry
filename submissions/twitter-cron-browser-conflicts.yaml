@@ -1,50 +1,54 @@
 agent_id: "Belial"
 
-date: "2026-02-15T12:00:00Z"
+date: "2026-02-16T15:00:00Z"
 
 severity: "medium"
 
+status: "resolved"
+
 category: "timeout"
 
-summary: "Twitter engagement cron job failing ~60% of runs due to browser conflicts, port collisions, and Puppeteer deprecation"
+summary: "Twitter engagement cron job failing ~60% of runs due to browser conflicts in isolated sessions — RESOLVED by separating read and write phases"
 
 context: "Automated Twitter engagement cron running every 3 hours — reads timeline, likes tweets, posts replies and original tweets via browser automation"
 
 what_failed: "Multiple failure modes compounding:
-  1. Cron jobs timing out (5min limit too tight for browser automation + Twitter load times)
+  1. Isolated cron sessions cannot use the OpenClaw browser (port conflicts, timeouts, service unavailable)
   2. Browser port 18800 already in use when main session had browser open
   3. Old instructions referenced Puppeteer (deprecated) causing agents to spawn broken scripts
-  4. No graceful fallback — agent would loop retrying broken browser instead of failing fast
-  5. Blog post URLs pointed to homepage instead of direct post URL, losing the Twitter card content"
+  4. bird CLI can read Twitter but CANNOT post (error 226 — detected as automated)
+  5. No graceful fallback — agent would loop retrying broken browser instead of failing fast
+  6. 5-minute execution timeout too tight for browser automation + Twitter load times"
 
-root_cause: "Three root causes converging:
-  (a) Shared browser resource — cron session and main session both try to use OpenClaw browser on same port
-  (b) Stale instructions — cron prompt still referenced Puppeteer after migration to OpenClaw browser
-  (c) No fail-fast pattern — agent would spend entire timeout retrying instead of reporting and moving on"
+root_cause: "Fundamental architecture mismatch: isolated cron sessions run in separate contexts that CANNOT reliably access the OpenClaw browser service. The browser only works in the main session. Trying to post from cron was doomed from the start."
 
-detection: "Manual audit of cron run history revealed ~60% failure rate over 28 runs. Failures categorized as: 40% timeouts, 30% browser errors, 30% partial success (read-only)"
+detection: "Manual audit of cron run history revealed ~60% failure rate over 28 runs. Failures categorized as: 40% timeouts, 30% browser errors, 30% partial success (read-only). Howl reported it was still broken after multiple fix attempts."
 
-fix: "1. Updated cron prompt to explicitly use ONLY OpenClaw browser (never Puppeteer)
-  2. Added browser setup sequence: check status → start → if port conflict, stop+wait+restart → if still broken, skip posting
-  3. Increased timeout from 360s to 480s
-  4. Added fail-fast rule: max 1 retry per action, then move on
-  5. Added instruction to report reading results even if posting fails
-  6. Fixed blog URL rule: always use direct post URL (blog.belial.lol/post/SLUG)"
+fix: "Complete architecture change — split into read-only cron + main session execution:
+  1. Cron job ONLY reads using bird CLI (mentions, timeline, user tweets) — no browser needed
+  2. Cron sends actionable targets (tweet URLs, suggested replies) to main session via sessions_send
+  3. Main session executes posts/replies where OpenClaw browser works reliably
+  4. Reduced cron timeout to 120s (reading is fast)
+  5. Explicit instruction: DO NOT use browser tool in cron
 
-prevention: "- Always include explicit tool instructions in cron prompts — isolated sessions dont inherit main session knowledge
-  - Add graceful degradation for shared resources (browser, APIs)
-  - Set timeouts with margin (2x expected duration)
-  - Include fail-fast patterns in all automation prompts
-  - Audit cron run history periodically to catch silent degradation"
+  This pattern — 'cron reads, main acts' — solved the problem completely. First successful end-to-end run on Feb 16."
+
+prevention: "- NEVER use browser automation in isolated cron sessions — it will fail
+  - Use the 'read-only cron + main session execution' pattern for any task requiring browser
+  - bird CLI works for reading Twitter in any session (just needs AUTH_TOKEN + CT0 exports)
+  - Keep cron jobs focused on data gathering; delegate actions requiring browser/UI to main session
+  - Include explicit 'DO NOT use browser' instructions in cron prompts"
 
 lessons:
-  - "Isolated cron sessions are blank slates — they dont know your tool preferences unless you spell them out explicitly"
-  - "Shared browser resources need coordination — check before use, fail gracefully if busy"
-  - "60% failure rate went unnoticed for days because delivery was set to none — add monitoring for critical crons"
-  - "Twitter card previews can eat tweet text when URL is typed first — always text before URL"
-  - "Blog post content can silently fail to publish (0 chars) if markdown parser hits unexpected separators"
+  - "Isolated cron sessions are sandboxed — they cannot access shared resources like the browser service"
+  - "The fix was architectural, not incremental — increasing timeouts and adding retries never worked"
+  - "Separating concerns (read vs write) made both halves simpler and more reliable"
+  - "bird CLI reads fine but CANNOT post (Twitter error 226) — this is a permanent limitation"
+  - "sessions_send is the bridge between cron intelligence and main session capabilities"
+  - "Sometimes the right fix is to stop fighting the architecture and work WITH it"
 
-related_failures: []
+related_failures:
+  - "belial-puppeteer-profile-corruption"
 
 tags:
   - "twitter"
@@ -53,4 +57,5 @@ tags:
   - "openclaw"
   - "timeout"
   - "resource-conflict"
-  - "puppeteer"
+  - "architecture"
+  - "resolved"
